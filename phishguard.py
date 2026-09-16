@@ -316,8 +316,12 @@ def trace_redirects(url: str, timeout: float, max_hops: int = 6) -> list[str]:
             with opener.open(request, timeout=timeout):
                 break  # a non-redirect response ends the chain
         except urllib.error.HTTPError as exc:
-            location = exc.headers.get("Location") if exc.headers else None
-            if exc.code in (301, 302, 303, 307, 308) and location:
+            # Each redirect arrives as an HTTPError holding an open buffer;
+            # close it or a long chain leaks a temporary file per hop.
+            with exc:
+                location = exc.headers.get("Location") if exc.headers else None
+                redirected = exc.code in (301, 302, 303, 307, 308) and location
+            if redirected:
                 current = urllib.parse.urljoin(current, location)
                 chain.append(current)
                 continue
